@@ -1,94 +1,93 @@
 "use client";
 
-import { useAccount, useReadContract } from "wagmi";
-import { formatUnits } from "viem";
-import { NOVADEFI_ADDRESS, NOVADEFI_ABI } from "@/lib/web3";
+import Link from "next/link";
+import { useNovaUser } from "@/lib/hooks/useNovaUser";
 
-type UserTuple = readonly [
-  bigint,
-  bigint,
-  bigint,
-  bigint,
-  bigint,
-  bigint,
-  bigint,
-  number,
-  `0x${string}`,
-  bigint,
-  bigint
-];
+function fmt(n: number) {
+  if (!isFinite(n)) return "0.00";
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function Card({
+  title,
+  value,
+}: {
+  title: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="text-xs text-white/50">{title}</div>
+      <div className="mt-2 text-2xl font-extrabold text-white">{value}</div>
+    </div>
+  );
+}
 
 export default function PremiumHeader() {
-  const { address } = useAccount();
+  const user = useNovaUser();
 
-  const { data } = useReadContract({
-    address: NOVADEFI_ADDRESS,
-    abi: NOVADEFI_ABI,
-    functionName: "users",
-    args: address ? [address] : undefined,
-    query: { enabled: !!address },
-  });
-
-  const user = data as UserTuple | undefined;
-
-  const deposit = user?.[0] ?? 0n;
-  const reward = user?.[1] ?? 0n;
-  const level = user?.[7] ?? 0;
-
-  const total = deposit + reward;
-
-  const shortAddress =
-    address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "-";
-
-  const vipConfig = {
-    0: { gradient: "from-gray-600 to-gray-800", label: "Member" },
-    1: { gradient: "from-green-400 to-emerald-600", label: "VIP 1" },
-    2: { gradient: "from-blue-400 to-blue-600", label: "VIP 2" },
-    3: { gradient: "from-yellow-400 to-yellow-600", label: "VIP 3" },
-  } as const;
-
-  const vip =
-    vipConfig[level as keyof typeof vipConfig] || vipConfig[0];
+  if (!user.isConnected) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-white/70">
+        Connect wallet to view dashboard
+      </div>
+    );
+  }
 
   return (
-    <div className="relative rounded-3xl p-6 bg-gradient-to-br from-black to-gray-900 border border-white/10 shadow-2xl overflow-hidden">
+    <div className="space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Card
+          title="Active Stake"
+          value={`${fmt(user.activeStake)} USDT`}
+        />
 
-      <div className="absolute -top-10 -right-10 w-40 h-40 bg-purple-500/20 blur-3xl rounded-full" />
+        <Card
+          title="Rewards"
+          value={`${fmt(user.rewardBalance)} USDT`}
+        />
 
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <div className="text-xs text-gray-400">
-            Connected Wallet
-          </div>
-          <div className="text-sm font-semibold text-white">
-            {shortAddress}
-          </div>
-        </div>
+        <Card
+          title="Team Volume"
+          value={`${fmt(user.teamVolume)} USDT`}
+        />
 
-        <div
-          className={`px-4 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${vip.gradient} text-white shadow-lg`}
-        >
-          👑 {vip.label}
-        </div>
+        <Card
+          title="Direct Referrals"
+          value={String(user.directCount)}
+        />
       </div>
 
-      <div>
-        <div className="text-xs text-gray-400">
-          Total Portfolio
-        </div>
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Link
+          href="/dashboard?tab=deposit"
+          className="rounded-xl bg-green-500/20 border border-green-500/30 px-4 py-3 text-center text-sm font-semibold text-green-300"
+        >
+          Stake
+        </Link>
 
-        <div className="text-3xl font-bold text-green-400 mt-1">
-          {formatUnits(total, 18)} USDT
-        </div>
+        <Link
+          href="/dashboard?tab=withdraw"
+          className="rounded-xl bg-blue-500/20 border border-blue-500/30 px-4 py-3 text-center text-sm font-semibold text-blue-300"
+        >
+          Rewards
+        </Link>
 
-        <div className="flex justify-between mt-4 text-xs text-gray-400">
-          <span>
-            Deposit: {formatUnits(deposit, 18)}
-          </span>
-          <span>
-            Rewards: {formatUnits(reward, 18)}
-          </span>
-        </div>
+        <Link
+          href="/dashboard?tab=staking"
+          className="rounded-xl bg-purple-500/20 border border-purple-500/30 px-4 py-3 text-center text-sm font-semibold text-purple-300"
+        >
+          My Stakes
+        </Link>
+
+        <Link
+          href="/dashboard?tab=team"
+          className="rounded-xl bg-yellow-500/20 border border-yellow-500/30 px-4 py-3 text-center text-sm font-semibold text-yellow-300"
+        >
+          Team
+        </Link>
       </div>
     </div>
   );

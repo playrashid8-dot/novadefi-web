@@ -13,14 +13,15 @@ module.exports = {
         enabled: true,
         runs: 200
       },
-      viaIR: true
+      evmVersion: "paris"
     }
   },
 
   networks: {
     bsc: {
       url: "https://bsc-dataseed.binance.org/",
-      accounts: [PRIVATE_KEY]
+      chainId: 56,
+      accounts: [`0x${PRIVATE_KEY}`]
     }
   },
 

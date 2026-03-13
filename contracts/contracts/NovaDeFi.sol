@@ -1,438 +1,588 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-
-contract NovaDeFi is Ownable, ReentrancyGuard {
-using SafeERC20 for IERC20;
-
-IERC20 public immutable USDT;  
-address public treasury;  
-
-uint256 public constant MIN_DEPOSIT = 50 * 1e18;  
-uint256 public constant MIN_WITHDRAW = 50 * 1e18;  
-uint256 public constant WITHDRAW_COOLDOWN = 96 hours;  
-uint256 public constant ADMIN_FEE = 8;  
-uint256 public constant MONTH = 30 days;  
-
-/* ================= EVENTS ================= */  
-
-event Deposited(address indexed user, uint256 amount);  
-event WithdrawRequested(address indexed user, uint256 amount);  
-event Withdrawn(address indexed user, uint256 amount, uint256 fee);  
-event Staked(address indexed user, uint256 amount, uint256 daysPeriod);  
-event StakeClaimed(address indexed user, uint256 total);  
-event SalaryClaimed(address indexed user, uint256 amount, uint8 stage);  
-event StakeBonus(address indexed user, uint256 amount, uint256 plan);  
-
-/* ================= STRUCTS ================= */  
-
-struct User {  
-    uint256 depositBalance;  
-    uint256 rewardBalance;  
-    uint256 lastROIUpdate;  
-
-    uint256 lastWithdrawRequest;  
-    uint256 pendingWithdraw;  
-
-    uint256 monthlyWithdrawn;  
-    uint256 monthStart;  
-
-    uint8 level;  
-    address referrer;  
-    uint256 directCount;  
-    uint256 teamCount;  
-
-    uint8 salaryStage;  
-    uint8 levelBonusStage;  
-    uint256 withdrawFromDeposit;  
-    uint256 withdrawFromReward;  
-
-    bool stake7BonusClaimed;  
-    bool stake15BonusClaimed;  
-    bool stake30BonusClaimed;  
-    bool stake60BonusClaimed;  
-}  
-
-struct Stake {  
-    uint256 amount;  
-    uint256 startTime;  
-    uint256 endTime;  
-    uint256 dailyRate;  
-    bool claimed;  
-}  
-
-mapping(address => User) public users;  
-mapping(address => Stake[]) public userStakes;  
-
-constructor(address _usdt, address _treasury) Ownable(msg.sender) {  
-    USDT = IERC20(_usdt);  
-    treasury = _treasury;  
-}  
-
-function setTreasury(address _new) external onlyOwner {  
-    treasury = _new;  
-}  
-
-/* ================= TIME ================= */  
-
-function _currentHour() internal view returns (uint256) {  
-return block.timestamp / 1 hours;
-
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 value) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 value) external returns (bool);
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+    function decimals() external view returns (uint8);
 }
 
-/* ================= DEPOSIT ================= */  
+library SafeERC20Lite {
+    function safeTransfer(IERC20 token, address to, uint256 value) internal {
+        bool ok = token.transfer(to, value);
+        require(ok, "SAFE_TRANSFER_FAILED");
+    }
 
-function deposit(uint256 amount, address referrer) external nonReentrant {  
-require(amount >= MIN_DEPOSIT, "Min 50");  
-
-User storage user = users[msg.sender];  
-
-if (user.depositBalance == 0) {  
-    if (referrer != address(0)) {  
-        require(referrer != msg.sender, "Self referral");  
-        require(users[referrer].depositBalance > 0, "Invalid referrer");  
-
-        user.referrer = referrer;  
-        users[referrer].directCount++;  
-        _propagateTeam(referrer);  
-    }  
-}  
-
-// Update ROI before changing balance  
-_updateROI(msg.sender);  
-
-USDT.safeTransferFrom(msg.sender, address(this), amount);  
-
-// Add deposit ONCE  
-user.depositBalance += amount;  
-
-if (user.monthStart == 0) {  
-    user.monthStart = block.timestamp;  
-}  
-
-_distributeTeamIncome(msg.sender, amount);  
-_updateLevel(msg.sender);  
-
-emit Deposited(msg.sender, amount);
-
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {
+        bool ok = token.transferFrom(from, to, value);
+        require(ok, "SAFE_TRANSFER_FROM_FAILED");
+    }
 }
 
-/* ================= ROI ================= */
+abstract contract ReentrancyGuard {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+    uint256 private _status = _NOT_ENTERED;
 
-function _getDailyROI(uint8 level) internal pure returns (uint256) {
-if (level == 3) return 200;  // 2%
-if (level == 2) return 150;  // 1.5%
-return 100;                  // 1%
+    modifier nonReentrant() {
+        require(_status != _ENTERED, "REENTRANCY");
+        _status = _ENTERED;
+        _;
+        _status = _NOT_ENTERED;
+    }
 }
 
-function _updateROI(address userAddr) internal {
-User storage user = users[userAddr];
-uint256 currentHour = _currentHour();
+abstract contract OwnableLite {
+    address private _owner;
 
-if (user.lastROIUpdate == 0) {  
-    user.lastROIUpdate = currentHour;  
-    return;  
-}  
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
-if (currentHour > user.lastROIUpdate) {  
-    uint256 hoursPassed = currentHour - user.lastROIUpdate;  
+    constructor(address initialOwner) {
+        require(initialOwner != address(0), "OWNER_ZERO");
+        _owner = initialOwner;
+        emit OwnershipTransferred(address(0), initialOwner);
+    }
 
-    // 🔥 Deposit + Reward (Stake excluded automatically)  
-    uint256 totalBalance = user.depositBalance + user.rewardBalance;
+    modifier onlyOwner() {
+        require(msg.sender == _owner, "NOT_OWNER");
+        _;
+    }
 
-// ROI only on 80% balance
-totalBalance = (totalBalance * 80) / 100;
+    function owner() external view returns (address) {
+        return _owner;
+    }
 
-// ❌ Pending withdraw pe ROI nahi milega  
-    if (user.pendingWithdraw > 0) {  
-if (totalBalance > user.pendingWithdraw) {  
-    totalBalance -= user.pendingWithdraw;  
-} else {  
-    totalBalance = 0;  
+    function renounceOwnership() external onlyOwner {
+        emit OwnershipTransferred(_owner, address(0));
+        _owner = address(0);
+    }
+
+    function _transferOwnership(address newOwner) internal {
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
 }
 
+contract NovaDeFi is ReentrancyGuard, OwnableLite {
+    using SafeERC20Lite for IERC20;
+
+    IERC20 public immutable stakingToken;
+    uint8 public immutable tokenDecimals;
+    uint256 public immutable UNIT;
+
+    uint256 public constant BPS = 10_000;
+    uint256 public constant firstStakeBonusBps = 500; // 5%
+    uint256 public constant treasury1Bps = 500; // 5%
+    uint256 public constant treasury2Bps = 500; // 5%
+
+    address public treasuryWallet1;
+    address public treasuryWallet2;
+
+    uint256[5] private _teamIncomeBps = [1000, 700, 500, 400, 300];
+    uint256[5] private _teamLevelRequiredStake;
+
+    uint256 private _salaryMinActiveStake;
+    uint256 private _planCount;
+    uint256 private _salaryStageCount;
+
+    uint256 private _totalActivePrincipal;
+    uint256 private _totalActiveProfitLiability;
+    uint256 private _totalRewardLiability;
+
+    struct Plan {
+        string name;
+        uint256 duration;
+        uint256 returnBps;
+        uint256 minStake;
+        uint256 maxStake;
+        uint256 maxActivePerUser;
+        bool enabled;
+    }
+
+    struct StakeInfo {
+        uint256 amount;
+        uint256 profit;
+        uint256 startTime;
+        uint256 endTime;
+        uint256 planId;
+        bool claimed;
+    }
+
+    struct SalaryStage {
+        uint256 requiredDirect;
+        uint256 requiredTeam;
+        uint256 requiredTeamVolume;
+        uint256 reward;
+    }
+
+    struct UserMeta {
+        address referrer;
+        bool firstStakeDone;
+        uint256 activePrincipal;
+        uint256 totalStakedVolume;
+        uint256 rewardBalance;
+        uint256 directCount;
+        uint256 teamCount;
+        uint256 teamVolume;
+        uint256 salaryStageClaimed;
+    }
+
+    mapping(uint256 => Plan) private _plans;
+    mapping(uint256 => SalaryStage) private _salaryStages;
+    mapping(address => StakeInfo[]) private _stakes;
+    mapping(address => mapping(uint256 => uint256)) private _userActivePlanStakeCount;
+    mapping(address => UserMeta) private _userMeta;
+
+    event TreasuryWalletsUpdated(address indexed treasury1, address indexed treasury2);
+
+    event PlanSet(
+        uint256 indexed planId,
+        string name,
+        uint256 duration,
+        uint256 returnBps,
+        uint256 minStake,
+        uint256 maxStake,
+        uint256 maxActivePerUser,
+        bool enabled
+    );
+
+    event SalaryStageSet(
+        uint256 indexed stageId,
+        uint256 requiredDirect,
+        uint256 requiredTeam,
+        uint256 requiredTeamVolume,
+        uint256 reward
+    );
+
+    event ReferrerBound(address indexed user, address indexed referrer);
+
+    event StakeCreated(
+        address indexed user,
+        uint256 indexed stakeIndex,
+        uint256 indexed planId,
+        uint256 amount,
+        uint256 profit,
+        uint256 startTime,
+        uint256 endTime
+    );
+
+    event FirstStakeBonusCredited(address indexed user, uint256 amount);
+    event TeamIncomeCredited(address indexed fromUser, address indexed leader, uint256 indexed level, uint256 amount);
+    event SalaryRewardCredited(address indexed user, uint256 indexed stageId, uint256 reward);
+    event StakeClaimed(address indexed user, uint256 indexed stakeIndex, uint256 capital, uint256 profit);
+    event RewardsClaimed(address indexed user, uint256 amount);
+
+    constructor(
+        address initialOwner,
+        address token_,
+        address treasury1_,
+        address treasury2_
+    ) OwnableLite(initialOwner) {
+        require(token_ != address(0), "TOKEN_ZERO");
+        require(treasury1_ != address(0) && treasury2_ != address(0), "TREASURY_ZERO");
+
+        stakingToken = IERC20(token_);
+        treasuryWallet1 = treasury1_;
+        treasuryWallet2 = treasury2_;
+
+        uint8 d = IERC20(token_).decimals();
+        require(d <= 18, "UNSUPPORTED_DECIMALS");
+        tokenDecimals = d;
+        UNIT = 10 ** d;
+
+        _teamLevelRequiredStake[0] = 50 * UNIT;
+        _teamLevelRequiredStake[1] = 100 * UNIT;
+        _teamLevelRequiredStake[2] = 300 * UNIT;
+        _teamLevelRequiredStake[3] = 500 * UNIT;
+        _teamLevelRequiredStake[4] = 1000 * UNIT;
+
+        _salaryMinActiveStake = 100 * UNIT;
+
+        _setPlan(0, "Basic", 7 days, 600, 10 * UNIT, 5000 * UNIT, 2, true);
+        _setPlan(1, "Silver", 15 days, 1500, 50 * UNIT, 10000 * UNIT, 3, true);
+        _setPlan(2, "Gold", 30 days, 3200, 100 * UNIT, 20000 * UNIT, 5, true);
+        _setPlan(3, "VIP", 60 days, 7000, 200 * UNIT, 30000 * UNIT, 7, true);
+        _setPlan(4, "Diamond", 90 days, 12000, 300 * UNIT, 50000 * UNIT, 8, true);
+        _setPlan(5, "Elite", 180 days, 25000, 500 * UNIT, 100000 * UNIT, 10, true);
+
+        _setSalaryStage(1, 5, 15, 2000 * UNIT, 30 * UNIT);
+        _setSalaryStage(2, 10, 35, 5000 * UNIT, 80 * UNIT);
+        _setSalaryStage(3, 25, 100, 15000 * UNIT, 250 * UNIT);
+        _setSalaryStage(4, 45, 150, 50000 * UNIT, 500 * UNIT);
+    }
+
+    // ==================================================
+    // OWNER
+    // ==================================================
+
+    function setTreasuryWallets(address treasury1_, address treasury2_) external onlyOwner {
+        require(treasury1_ != address(0) && treasury2_ != address(0), "TREASURY_ZERO");
+        treasuryWallet1 = treasury1_;
+        treasuryWallet2 = treasury2_;
+        emit TreasuryWalletsUpdated(treasury1_, treasury2_);
+    }
+
+    // ==================================================
+    // USER FUNCTIONS
+    // ==================================================
+
+    function stake(uint256 planId, uint256 amount, address referrer) external nonReentrant {
+        Plan memory p = _plans[planId];
+
+        require(p.enabled, "PLAN_DISABLED");
+        require(amount >= p.minStake, "BELOW_MIN");
+        require(amount <= p.maxStake, "ABOVE_MAX");
+        require(_userActivePlanStakeCount[msg.sender][planId] < p.maxActivePerUser, "PLAN_LIMIT_REACHED");
+
+        uint256 beforeBal = stakingToken.balanceOf(address(this));
+        stakingToken.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 afterBal = stakingToken.balanceOf(address(this));
+        require(afterBal - beforeBal == amount, "FEE_ON_TRANSFER_NOT_ALLOWED");
+
+        _bindReferrer(msg.sender, referrer);
+
+        uint256 profit = (amount * p.returnBps) / BPS;
+
+        uint256 bonusToCredit = 0;
+        if (!_userMeta[msg.sender].firstStakeDone) {
+            _userMeta[msg.sender].firstStakeDone = true;
+            bonusToCredit = (amount * firstStakeBonusBps) / BPS;
+        }
+
+        uint256 treasury1Amount = (amount * treasury1Bps) / BPS;
+        uint256 treasury2Amount = (amount * treasury2Bps) / BPS;
+
+        _totalActivePrincipal += amount;
+        _totalActiveProfitLiability += profit;
+
+        _userMeta[msg.sender].activePrincipal += amount;
+        _userMeta[msg.sender].totalStakedVolume += amount;
+        _userActivePlanStakeCount[msg.sender][planId] += 1;
+
+        if (bonusToCredit > 0) {
+            _userMeta[msg.sender].rewardBalance += bonusToCredit;
+            _totalRewardLiability += bonusToCredit;
+            emit FirstStakeBonusCredited(msg.sender, bonusToCredit);
+        }
+
+        _creditTeamIncome(msg.sender, profit);
+
+        _stakes[msg.sender].push(
+            StakeInfo({
+                amount: amount,
+                profit: profit,
+                startTime: block.timestamp,
+                endTime: block.timestamp + p.duration,
+                planId: planId,
+                claimed: false
+            })
+        );
+
+        _addTeamVolume(msg.sender, amount);
+
+        stakingToken.safeTransfer(treasuryWallet1, treasury1Amount);
+        stakingToken.safeTransfer(treasuryWallet2, treasury2Amount);
+
+        emit StakeCreated(
+            msg.sender,
+            _stakes[msg.sender].length - 1,
+            planId,
+            amount,
+            profit,
+            block.timestamp,
+            block.timestamp + p.duration
+        );
+    }
+
+    function claimStake(uint256 stakeIndex) external nonReentrant {
+        require(stakeIndex < _stakes[msg.sender].length, "INVALID_STAKE");
+
+        StakeInfo storage s = _stakes[msg.sender][stakeIndex];
+        require(!s.claimed, "ALREADY_CLAIMED");
+        require(block.timestamp >= s.endTime, "NOT_MATURED");
+
+        s.claimed = true;
+
+        _userActivePlanStakeCount[msg.sender][s.planId] -= 1;
+        _userMeta[msg.sender].activePrincipal -= s.amount;
+
+        _totalActivePrincipal -= s.amount;
+        _totalActiveProfitLiability -= s.profit;
+
+        uint256 payout = s.amount + s.profit;
+        stakingToken.safeTransfer(msg.sender, payout);
+
+        emit StakeClaimed(msg.sender, stakeIndex, s.amount, s.profit);
+    }
+
+    function claimRewards() external nonReentrant {
+        uint256 amount = _userMeta[msg.sender].rewardBalance;
+        require(amount > 0, "NO_REWARDS");
+
+        _userMeta[msg.sender].rewardBalance = 0;
+        _totalRewardLiability -= amount;
+
+        stakingToken.safeTransfer(msg.sender, amount);
+
+        emit RewardsClaimed(msg.sender, amount);
+    }
+
+    function claimSalary() external nonReentrant {
+        UserMeta storage u = _userMeta[msg.sender];
+        uint256 nextStage = u.salaryStageClaimed + 1;
+
+        require(nextStage > 0 && nextStage <= _salaryStageCount, "NO_NEXT_STAGE");
+
+        SalaryStage memory s = _salaryStages[nextStage];
+
+        require(u.activePrincipal >= _salaryMinActiveStake, "NOT_ACTIVE_STAKER");
+        require(u.directCount >= s.requiredDirect, "DIRECT_NOT_MET");
+        require(u.teamCount >= s.requiredTeam, "TEAM_NOT_MET");
+        require(u.teamVolume >= s.requiredTeamVolume, "VOLUME_NOT_MET");
+
+        u.salaryStageClaimed = nextStage;
+        u.rewardBalance += s.reward;
+        _totalRewardLiability += s.reward;
+
+        emit SalaryRewardCredited(msg.sender, nextStage, s.reward);
+    }
+
+    // ==================================================
+    // IMPORTANT READ FUNCTIONS ONLY
+    // ==================================================
+
+    function planCount() external view returns (uint256) {
+        return _planCount;
+    }
+
+    function plans(uint256 planId) external view returns (
+        string memory name,
+        uint256 duration,
+        uint256 returnBps,
+        uint256 minStake,
+        uint256 maxStake,
+        uint256 maxActivePerUser,
+        bool enabled
+    ) {
+        Plan memory p = _plans[planId];
+        return (
+            p.name,
+            p.duration,
+            p.returnBps,
+            p.minStake,
+            p.maxStake,
+            p.maxActivePerUser,
+            p.enabled
+        );
+    }
+
+    function getUserStakes(address user) external view returns (StakeInfo[] memory) {
+        return _stakes[user];
+    }
+
+    function getStakeCount(address user) external view returns (uint256) {
+        return _stakes[user].length;
+    }
+
+    function getRewardBalance(address user) external view returns (uint256) {
+        return _userMeta[user].rewardBalance;
+    }
+function userMeta(address user) external view returns (
+    address referrer,
+    bool firstStakeDone,
+    uint256 activePrincipal,
+    uint256 totalStakedVolume,
+    uint256 rewardBalance,
+    uint256 directCount,
+    uint256 teamCount,
+    uint256 teamVolume,
+    uint256 salaryStageClaimed
+) {
+    UserMeta memory u = _userMeta[user];
+    return (
+        u.referrer,
+        u.firstStakeDone,
+        u.activePrincipal,
+        u.totalStakedVolume,
+        u.rewardBalance,
+        u.directCount,
+        u.teamCount,
+        u.teamVolume,
+        u.salaryStageClaimed
+    );
 }
 
-if (totalBalance > 0) {  
-
-        // ✅ Accurate hourly ROI  
-        uint256 reward =  
-            (totalBalance *  
-                _getDailyROI(user.level) *  
-                hoursPassed) / (10000 * 24);  
-
-        user.rewardBalance += reward;  
-    }  
-
-    user.lastROIUpdate = currentHour;  
-}
-
-}
-
-/* ================= TEAM ================= */  
-
-function _distributeTeamIncome(address userAddr, uint256 amount) internal {  
-    address up = users[userAddr].referrer;  
-    uint256[3] memory percents = [uint256(10), 6, 5];  
-
-    for (uint256 i = 0; i < 3; i++) {  
-        if (up == address(0)) break;  
-        users[up].rewardBalance += (amount * percents[i]) / 100;  
-        up = users[up].referrer;  
-    }  
-}  
-
-function _propagateTeam(address referrer) internal {  
-    address up = referrer;  
-    for (uint256 i = 0; i < 3; i++) {  
-        if (up == address(0)) break;  
-        users[up].teamCount++;  
-        up = users[up].referrer;  
-    }  
-}  
-
-/* ================= LEVEL + BONUS ================= */  
-
-function _updateLevel(address userAddr) internal {  
-    User storage u = users[userAddr];  
-    uint8 prev = u.level;  
-    uint8 newLevel = prev;  
-
-    if (u.directCount >= 45 && u.teamCount >= 150) newLevel = 3;  
-    else if (u.directCount >= 25 && u.teamCount >= 100) newLevel = 2;  
-    else if (u.depositBalance >= MIN_DEPOSIT) newLevel = 1;  
-
-    if (newLevel > prev) {  
-        u.level = newLevel;  
-
-        if (newLevel == 1 && u.levelBonusStage < 1) {  
-            u.rewardBalance += 5 * 1e18;  
-            u.levelBonusStage = 1;  
-        }  
-        else if (newLevel == 2 && u.levelBonusStage < 2) {  
-            u.rewardBalance += 20 * 1e18;  
-            u.levelBonusStage = 2;  
-        }  
-        else if (newLevel == 3 && u.levelBonusStage < 3) {  
-            u.rewardBalance += 50 * 1e18;  
-            u.levelBonusStage = 3;  
-        }  
-    }  
-}  
-
-/* ================= SALARY ================= */  
-
-function claimSalary() external nonReentrant {  
-    User storage u = users[msg.sender];  
-    require(u.depositBalance > 0, "No deposit");  
-
-    uint256 reward;  
-    uint8 stage;  
-
-    if (u.salaryStage == 0 && u.directCount >= 5 && u.teamCount >= 15) {  
-        reward = 30 * 1e18;  
-        stage = 1;  
-    }  
-    else if (u.salaryStage == 1 && u.directCount >= 10 && u.teamCount >= 35) {  
-        reward = 80 * 1e18;  
-        stage = 2;  
-    }  
-    else if (u.salaryStage == 2 && u.directCount >= 25 && u.teamCount >= 100) {  
-        reward = 250 * 1e18;  
-        stage = 3;  
-    }  
-    else if (u.salaryStage == 3 && u.directCount >= 45 && u.teamCount >= 150) {  
-        reward = 500 * 1e18;  
-        stage = 4;  
-    }  
-    else {  
-        revert("Not eligible");  
-    }  
-
-    u.salaryStage = stage;  
-    u.rewardBalance += reward;  
-
-    emit SalaryClaimed(msg.sender, reward, stage);  
-}  
-
-/* ================= STAKING + ENTRY BONUS ================= */  
-
-function createStake(uint256 amount, uint256 daysPeriod) external nonReentrant {  
-    User storage user = users[msg.sender];  
-    require(user.depositBalance >= amount, "Low balance");  
-
-    _updateROI(msg.sender);  
-
-    uint256 rate;  
-    uint256 minAmount;  
-
-    if (daysPeriod == 7) { rate = 130; minAmount = 100 * 1e18; }  
-    else if (daysPeriod == 15) { rate = 150; minAmount = 300 * 1e18; }  
-    else if (daysPeriod == 30) { rate = 180; minAmount = 500 * 1e18; }  
-    else if (daysPeriod == 60) { rate = 220; minAmount = 1000 * 1e18; }  
-    else revert("Invalid plan");  
-
-    require(amount >= minAmount, "Below minimum");  
-
-    user.depositBalance -= amount;  
-
-    userStakes[msg.sender].push(  
-        Stake(amount, block.timestamp, block.timestamp + (daysPeriod * 1 days), rate, false)  
-    );  
-
-    uint256 bonus;  
-
-    if (daysPeriod == 7 && !user.stake7BonusClaimed) {  
-        bonus = 5 * 1e18;  
-        user.stake7BonusClaimed = true;  
-    }  
-    else if (daysPeriod == 15 && !user.stake15BonusClaimed) {  
-        bonus = 15 * 1e18;  
-        user.stake15BonusClaimed = true;  
-    }  
-    else if (daysPeriod == 30 && !user.stake30BonusClaimed) {  
-        bonus = 30 * 1e18;  
-        user.stake30BonusClaimed = true;  
-    }  
-    else if (daysPeriod == 60 && !user.stake60BonusClaimed) {  
-        bonus = 100 * 1e18;  
-        user.stake60BonusClaimed = true;  
-    }  
-
-    if (bonus > 0) {  
-        user.rewardBalance += bonus;  
-        emit StakeBonus(msg.sender, bonus, daysPeriod);  
-    }  
-
-    emit Staked(msg.sender, amount, daysPeriod);  
-}  
-
-function claimStake(uint256 index) external nonReentrant {  
-    Stake storage s = userStakes[msg.sender][index];  
-    require(!s.claimed, "Claimed");  
-    require(block.timestamp >= s.endTime, "Not matured");  
-
-    uint256 duration = (s.endTime - s.startTime) / 1 days;  
-    uint256 profit = (s.amount * s.dailyRate * duration) / 10000;  
-
-    uint256 total = s.amount + profit;  
-    s.claimed = true;  
-
-    users[msg.sender].rewardBalance += total;  
-
-    emit StakeClaimed(msg.sender, total);  
-}  
-
-/* ================= WITHDRAW ================= */
-
-function _getMonthlyLimit(uint8 level) internal pure returns (uint256) {
-if (level == 3) return 5000 * 1e18;
-if (level == 2) return 2000 * 1e18;
-return 500 * 1e18;
-}
-
-function requestWithdraw(uint256 amount) external nonReentrant {
-User storage user = users[msg.sender];
-
-_updateROI(msg.sender);  
-
-require(amount > 0, "Invalid amount");  
-require(amount >= MIN_WITHDRAW, "Minimum 50 USDT required");  
-require(user.pendingWithdraw == 0, "Pending exists");  
-
-// Reset monthly window if expired  
-if (block.timestamp >= user.monthStart + MONTH) {  
-    user.monthStart = block.timestamp;  
-    user.monthlyWithdrawn = 0;  
-}  
-
-uint256 totalBalance = user.depositBalance + user.rewardBalance;  
-require(totalBalance >= amount, "Insufficient");  
-
-uint256 limit = _getMonthlyLimit(user.level);  
-require(  
-    user.monthlyWithdrawn + amount <= limit,  
-    "Monthly limit exceeded"  
-);  
-
-// 🔥 Deduct properly and track source  
-if (user.rewardBalance >= amount) {  
-    user.rewardBalance -= amount;  
-
-    user.withdrawFromReward = amount;  
-    user.withdrawFromDeposit = 0;  
-} else {  
-    uint256 remaining = amount - user.rewardBalance;  
-
-    user.withdrawFromReward = user.rewardBalance;  
-    user.withdrawFromDeposit = remaining;  
-
-    user.rewardBalance = 0;  
-    user.depositBalance -= remaining;  
-}  
-
-user.pendingWithdraw = amount;  
-user.lastWithdrawRequest = block.timestamp;  
-
-emit WithdrawRequested(msg.sender, amount);
-
-}
-
-function cancelWithdraw() external nonReentrant {
-User storage user = users[msg.sender];
-
-require(user.pendingWithdraw > 0, "No pending");  
-require(  
-    block.timestamp < user.lastWithdrawRequest + WITHDRAW_COOLDOWN,  
-    "Cancel time passed"  
-);  
-
-// Restore correctly  
-if (user.withdrawFromReward > 0) {  
-    user.rewardBalance += user.withdrawFromReward;  
-}  
-
-if (user.withdrawFromDeposit > 0) {  
-    user.depositBalance += user.withdrawFromDeposit;  
-}  
-
-user.withdrawFromReward = 0;  
-user.withdrawFromDeposit = 0;  
-user.pendingWithdraw = 0;  
-
-emit WithdrawRequested(msg.sender, 0);
-
-}
-
-function claimWithdraw() external nonReentrant {
-User storage user = users[msg.sender];
-
-require(user.pendingWithdraw > 0, "No request");  
-require(  
-    block.timestamp >= user.lastWithdrawRequest + WITHDRAW_COOLDOWN,  
-    "Wait 96h"  
-);  
-
-uint256 amount = user.pendingWithdraw;  
-
-user.pendingWithdraw = 0;  
-user.monthlyWithdrawn += amount;  
-
-// Reset tracking  
-user.withdrawFromReward = 0;  
-user.withdrawFromDeposit = 0;  
-
-uint256 fee = (amount * ADMIN_FEE) / 100;  
-uint256 net = amount - fee;  
-
-USDT.safeTransfer(treasury, fee);  
-USDT.safeTransfer(msg.sender, net);  
-
-emit Withdrawn(msg.sender, net, fee);
-
-}
+    function canClaimSalary(address user) external view returns (bool) {
+        UserMeta storage u = _userMeta[user];
+        uint256 nextStage = u.salaryStageClaimed + 1;
+        if (nextStage == 0 || nextStage > _salaryStageCount) return false;
+
+        SalaryStage memory s = _salaryStages[nextStage];
+
+        return (
+            u.activePrincipal >= _salaryMinActiveStake &&
+            u.directCount >= s.requiredDirect &&
+            u.teamCount >= s.requiredTeam &&
+            u.teamVolume >= s.requiredTeamVolume
+        );
+    }
+
+    function previewTeamIncome(address user, uint256 expectedProfit)
+        external
+        view
+        returns (uint256[5] memory rewards, uint256 total)
+    {
+        address current = _userMeta[user].referrer;
+
+        for (uint256 i = 0; i < 5; i++) {
+            if (current == address(0)) break;
+            if (_userMeta[current].activePrincipal >= _teamLevelRequiredStake[i]) {
+                rewards[i] = (expectedProfit * _teamIncomeBps[i]) / BPS;
+                total += rewards[i];
+            }
+            current = _userMeta[current].referrer;
+        }
+    }
+
+    function salaryStages(uint256 stageId) external view returns (
+        uint256 requiredDirect,
+        uint256 requiredTeam,
+        uint256 requiredTeamVolume,
+        uint256 reward
+    ) {
+        SalaryStage memory s = _salaryStages[stageId];
+        return (s.requiredDirect, s.requiredTeam, s.requiredTeamVolume, s.reward);
+    }
+
+    // ==================================================
+    // INTERNAL LOGIC
+    // ==================================================
+
+    function _bindReferrer(address user, address referrer) internal {
+        UserMeta storage u = _userMeta[user];
+        if (u.referrer != address(0)) return;
+        if (referrer == address(0) || referrer == user) return;
+
+        require(_userMeta[referrer].totalStakedVolume > 0, "INVALID_REFERRER");
+
+        u.referrer = referrer;
+        emit ReferrerBound(user, referrer);
+
+        address current = referrer;
+        for (uint256 i = 0; i < 5; i++) {
+            if (current == address(0)) break;
+
+            if (i == 0) {
+                _userMeta[current].directCount += 1;
+            }
+            _userMeta[current].teamCount += 1;
+
+            current = _userMeta[current].referrer;
+        }
+    }
+
+    function _addTeamVolume(address user, uint256 amount) internal {
+        address current = _userMeta[user].referrer;
+        for (uint256 i = 0; i < 5; i++) {
+            if (current == address(0)) break;
+            _userMeta[current].teamVolume += amount;
+            current = _userMeta[current].referrer;
+        }
+    }
+
+    function _creditTeamIncome(address user, uint256 profit) internal {
+        address current = _userMeta[user].referrer;
+
+        for (uint256 i = 0; i < 5; i++) {
+            if (current == address(0)) break;
+
+            if (_userMeta[current].activePrincipal >= _teamLevelRequiredStake[i]) {
+                uint256 reward = (profit * _teamIncomeBps[i]) / BPS;
+
+                if (reward > 0) {
+                    _userMeta[current].rewardBalance += reward;
+                    _totalRewardLiability += reward;
+                    emit TeamIncomeCredited(user, current, i + 1, reward);
+                }
+            }
+
+            current = _userMeta[current].referrer;
+        }
+    }
+
+    function _setPlan(
+        uint256 planId,
+        string memory name,
+        uint256 duration,
+        uint256 returnBps,
+        uint256 minStake,
+        uint256 maxStake,
+        uint256 maxActivePerUser,
+        bool enabled
+    ) internal {
+        require(duration > 0, "BAD_DURATION");
+        require(returnBps > 0, "BAD_RETURN");
+        require(minStake > 0, "BAD_MIN");
+        require(maxStake >= minStake, "BAD_MAX");
+        require(maxActivePerUser > 0, "BAD_LIMIT");
+
+        _plans[planId] = Plan({
+            name: name,
+            duration: duration,
+            returnBps: returnBps,
+            minStake: minStake,
+            maxStake: maxStake,
+            maxActivePerUser: maxActivePerUser,
+            enabled: enabled
+        });
+
+        if (planId >= _planCount) {
+            _planCount = planId + 1;
+        }
+
+        emit PlanSet(
+            planId,
+            name,
+            duration,
+            returnBps,
+            minStake,
+            maxStake,
+            maxActivePerUser,
+            enabled
+        );
+    }
+
+    function _setSalaryStage(
+        uint256 stageId,
+        uint256 requiredDirect,
+        uint256 requiredTeam,
+        uint256 requiredTeamVolume,
+        uint256 reward
+    ) internal {
+        require(stageId > 0, "BAD_STAGE");
+        require(reward > 0, "BAD_REWARD");
+
+        _salaryStages[stageId] = SalaryStage({
+            requiredDirect: requiredDirect,
+            requiredTeam: requiredTeam,
+            requiredTeamVolume: requiredTeamVolume,
+            reward: reward
+        });
+
+        if (stageId > _salaryStageCount) {
+            _salaryStageCount = stageId;
+        }
+
+        emit SalaryStageSet(
+            stageId,
+            requiredDirect,
+            requiredTeam,
+            requiredTeamVolume,
+            reward
+        );
+    }
 }
