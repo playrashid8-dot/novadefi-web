@@ -85,20 +85,50 @@ export function useNovaUser() {
   });
 
   /* =========================
+     TEAM LEVELS
+  ========================= */
+
+  const { data: teamLevelsData, refetch: refetchTeamLevels } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "getTeamLevels",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address,
+      refetchInterval: 10000,
+    },
+  });
+
+  /* =========================
+     NEXT SALARY REQUIREMENT
+  ========================= */
+
+  const { data: nextSalaryData, refetch: refetchNextSalary } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "getNextSalaryRequirement",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address,
+      refetchInterval: 10000,
+    },
+  });
+
+  /* =========================
      META PARSE
   ========================= */
 
   const m = meta as
     | readonly [
-        `0x${string}`, // referrer
-        boolean, // firstStakeDone
-        bigint, // activePrincipal
-        bigint, // totalStakedVolume
-        bigint, // rewardBalance
-        bigint, // directCount
-        bigint, // teamCount
-        bigint, // teamVolume
-        bigint // salaryStageClaimed
+        `0x${string}`,
+        boolean,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint
       ]
     | undefined;
 
@@ -118,6 +148,50 @@ export function useNovaUser() {
 
   const rewardBalanceRaw =
     (rewardBalanceData as bigint | undefined) ?? rewardBalanceMeta;
+
+  /* =========================
+     TEAM LEVELS PARSE
+  ========================= */
+
+  const teamLevels = teamLevelsData as
+    | readonly [bigint, bigint, bigint, bigint, bigint]
+    | undefined;
+
+  const level1CountRaw = teamLevels?.[0] ?? 0n;
+  const level2CountRaw = teamLevels?.[1] ?? 0n;
+  const level3CountRaw = teamLevels?.[2] ?? 0n;
+  const level4CountRaw = teamLevels?.[3] ?? 0n;
+  const level5CountRaw = teamLevels?.[4] ?? 0n;
+
+  /* =========================
+     NEXT SALARY PARSE
+  ========================= */
+
+  const nextSalary = nextSalaryData as
+    | readonly [
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        bigint,
+        boolean
+      ]
+    | undefined;
+
+  const nextSalaryStageRaw = nextSalary?.[0] ?? 0n;
+  const nextSalaryRequiredDirectRaw = nextSalary?.[1] ?? 0n;
+  const nextSalaryRequiredTeamRaw = nextSalary?.[2] ?? 0n;
+  const nextSalaryRequiredVolumeRaw = nextSalary?.[3] ?? 0n;
+  const nextSalaryRequiredActiveStakeRaw = nextSalary?.[4] ?? 0n;
+  const nextSalaryRewardRaw = nextSalary?.[5] ?? 0n;
+  const nextSalaryCurrentFreshDirectRaw = nextSalary?.[6] ?? 0n;
+  const nextSalaryCurrentFreshTeamRaw = nextSalary?.[7] ?? 0n;
+  const nextSalaryCurrentFreshVolumeRaw = nextSalary?.[8] ?? 0n;
+  const nextSalaryClaimable = Boolean(nextSalary?.[9] ?? false);
 
   /* =========================
      STAKES PARSE
@@ -174,6 +248,22 @@ export function useNovaUser() {
     teamVolumeRaw,
     salaryStageClaimedRaw,
 
+    level1CountRaw,
+    level2CountRaw,
+    level3CountRaw,
+    level4CountRaw,
+    level5CountRaw,
+
+    nextSalaryStageRaw,
+    nextSalaryRequiredDirectRaw,
+    nextSalaryRequiredTeamRaw,
+    nextSalaryRequiredVolumeRaw,
+    nextSalaryRequiredActiveStakeRaw,
+    nextSalaryRewardRaw,
+    nextSalaryCurrentFreshDirectRaw,
+    nextSalaryCurrentFreshTeamRaw,
+    nextSalaryCurrentFreshVolumeRaw,
+
     activeStake: toNum(activeStakeDisplayRaw),
     totalStakedVolume: toNum(totalStakedVolumeRaw),
     rewardBalance: toNum(rewardBalanceRaw),
@@ -183,11 +273,28 @@ export function useNovaUser() {
     teamCount: Number(teamCountRaw),
     salaryStage: Number(salaryStageClaimedRaw),
 
+    level1Count: Number(level1CountRaw),
+    level2Count: Number(level2CountRaw),
+    level3Count: Number(level3CountRaw),
+    level4Count: Number(level4CountRaw),
+    level5Count: Number(level5CountRaw),
+
+    nextSalaryStage: Number(nextSalaryStageRaw),
+    nextSalaryRequiredDirect: Number(nextSalaryRequiredDirectRaw),
+    nextSalaryRequiredTeam: Number(nextSalaryRequiredTeamRaw),
+    nextSalaryRequiredVolume: toNum(nextSalaryRequiredVolumeRaw),
+    nextSalaryRequiredActiveStake: toNum(nextSalaryRequiredActiveStakeRaw),
+    nextSalaryReward: toNum(nextSalaryRewardRaw),
+    nextSalaryCurrentFreshDirect: Number(nextSalaryCurrentFreshDirectRaw),
+    nextSalaryCurrentFreshTeam: Number(nextSalaryCurrentFreshTeamRaw),
+    nextSalaryCurrentFreshVolume: toNum(nextSalaryCurrentFreshVolumeRaw),
+
     stakes,
     activeStakes,
     maturedStakes,
 
     canClaimSalary: Boolean(canClaimSalaryData),
+    nextSalaryClaimable,
 
     refetchAll: async () => {
       await Promise.all([
@@ -195,6 +302,8 @@ export function useNovaUser() {
         refetchReward?.(),
         refetchStakes?.(),
         refetchSalary?.(),
+        refetchTeamLevels?.(),
+        refetchNextSalary?.(),
       ]);
     },
   };

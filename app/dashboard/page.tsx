@@ -1,6 +1,8 @@
 "use client";
 
 import Navbar from "@/app/components/Navbar";
+import BottomNav from "@/app/components/BottomNav";
+
 import dynamic from "next/dynamic";
 import { Suspense, useEffect } from "react";
 import { useAccount } from "wagmi";
@@ -40,6 +42,9 @@ export default function DashboardPage() {
           <DashboardContent />
         </Suspense>
       </NetworkGuard>
+
+      {/* Bottom Mobile Navigation */}
+      <BottomNav />
     </main>
   );
 }

@@ -49,7 +49,6 @@ export default function RewardsPanel() {
   const canClaimSalary = Boolean(user.canClaimSalary);
   const currentSalaryStage = Number(user.salaryStage ?? 0);
   const nextSalaryStage = currentSalaryStage + 1;
-  const firstStakeDone = Boolean(user.firstStakeDone);
   const activeStake = Number(user.activeStake ?? 0);
   const directCount = Number(user.directCount ?? 0);
   const teamCount = Number(user.teamCount ?? 0);
@@ -58,16 +57,12 @@ export default function RewardsPanel() {
   const hasRewards = rewardBalanceRaw > 0n;
 
   const rewardHint = useMemo(() => {
-    if (!firstStakeDone) {
-      return "First stake bonus will appear here after your first successful stake.";
-    }
-
     if (rewardBalance > 0) {
-      return "Your reward balance includes first stake bonus, team income, and salary rewards.";
+      return "Your reward balance includes team income and salary rewards.";
     }
 
     return "No claimable rewards yet.";
-  }, [firstStakeDone, rewardBalance]);
+  }, [rewardBalance]);
 
   async function handleClaimRewards() {
     if (!address || !hasRewards || claimingRewards) return;
@@ -190,7 +185,7 @@ export default function RewardsPanel() {
       <div className="rounded-3xl border border-white/10 bg-white/5 p-4 md:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-extrabold text-cyan-300">
+            <h2 className="text-2xl font-extrabold text-yellow-300">
               Rewards Center
             </h2>
             <p className="mt-1 text-sm text-white/60">
@@ -286,9 +281,7 @@ export default function RewardsPanel() {
         </div>
 
         <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4 text-xs text-white/45">
-          <div>
-            • Rewards include first stake bonus, team income, and salary rewards.
-          </div>
+          <div>• Rewards include team income and salary rewards.</div>
           <div className="mt-1">
             • Claim Rewards sends USDT directly to your wallet.
           </div>

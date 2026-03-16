@@ -50,42 +50,28 @@ const PLAN_UI: PlanUi[] = [
     key: "BASIC",
     name: "Basic",
     durationLabel: "7 Days",
-    returnLabel: "6%",
+    returnLabel: "4%",
   },
   {
     id: PLAN_IDS.SILVER,
     key: "SILVER",
     name: "Silver",
     durationLabel: "15 Days",
-    returnLabel: "15%",
+    returnLabel: "12%",
   },
   {
     id: PLAN_IDS.GOLD,
     key: "GOLD",
     name: "Gold",
     durationLabel: "30 Days",
-    returnLabel: "32%",
+    returnLabel: "26%",
   },
   {
     id: PLAN_IDS.VIP,
     key: "VIP",
     name: "VIP",
     durationLabel: "60 Days",
-    returnLabel: "70%",
-  },
-  {
-    id: PLAN_IDS.DIAMOND,
-    key: "DIAMOND",
-    name: "Diamond",
-    durationLabel: "90 Days",
-    returnLabel: "120%",
-  },
-  {
-    id: PLAN_IDS.ELITE,
-    key: "ELITE",
-    name: "Elite",
-    durationLabel: "180 Days",
-    returnLabel: "250%",
+    returnLabel: "60%",
   },
 ];
 
@@ -360,7 +346,7 @@ export default function StakePanel() {
       <div className="rounded-3xl border border-white/10 bg-white/5 p-4 md:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-extrabold text-green-300">
+            <h2 className="text-2xl font-extrabold text-yellow-300">
               Stake USDT
             </h2>
             <p className="mt-1 text-sm text-white/60">

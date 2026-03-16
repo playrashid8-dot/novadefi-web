@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount, useReadContract, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "@wagmi/core";
 import { formatUnits } from "viem";
 import { Lock, Clock3 } from "lucide-react";
@@ -47,25 +47,6 @@ function getTimeLeft(endTime: bigint) {
   return `${m}m`;
 }
 
-function getPlanMeta(id: number) {
-  switch (id) {
-    case 0:
-      return { name: "Basic", days: 7, roi: "6%" };
-    case 1:
-      return { name: "Silver", days: 15, roi: "15%" };
-    case 2:
-      return { name: "Gold", days: 30, roi: "32%" };
-    case 3:
-      return { name: "VIP", days: 60, roi: "70%" };
-    case 4:
-      return { name: "Diamond", days: 90, roi: "120%" };
-    case 5:
-      return { name: "Elite", days: 180, roi: "250%" };
-    default:
-      return { name: `Plan ${id}`, days: 0, roi: "—" };
-  }
-}
-
 type Stake = {
   amount: bigint;
   profit: bigint;
@@ -74,6 +55,16 @@ type Stake = {
   planId: bigint;
   claimed: boolean;
 };
+
+type PlanTuple = readonly [
+  string,
+  bigint,
+  bigint,
+  bigint,
+  bigint,
+  bigint,
+  boolean
+];
 
 export default function StakingSection() {
   const { address, isConnected } = useAccount();
@@ -84,6 +75,61 @@ export default function StakingSection() {
   const user = useNovaUser();
 
   const [loading, setLoading] = useState<string | null>(null);
+
+  const { data: plan0 } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "plans",
+    args: [0n],
+    query: { enabled: true, refetchInterval: 15000 },
+  });
+
+  const { data: plan1 } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "plans",
+    args: [1n],
+    query: { enabled: true, refetchInterval: 15000 },
+  });
+
+  const { data: plan2 } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "plans",
+    args: [2n],
+    query: { enabled: true, refetchInterval: 15000 },
+  });
+
+  const { data: plan3 } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "plans",
+    args: [3n],
+    query: { enabled: true, refetchInterval: 15000 },
+  });
+
+  const planMap = useMemo(() => {
+    const rawPlans = [plan0, plan1, plan2, plan3] as (PlanTuple | undefined)[];
+
+    return rawPlans.reduce<Record<number, { name: string; days: number; roi: string }>>(
+      (acc, p, idx) => {
+        if (!p) return acc;
+
+        const name = p[0] || `Plan ${idx}`;
+        const durationDays = Number(p[1] ?? 0n) / 86400;
+        const returnBps = Number(p[2] ?? 0n);
+
+        acc[idx] = {
+          name,
+          days: durationDays,
+          roi: `${returnBps / 100}%`,
+        };
+
+        return acc;
+      },
+      {}
+    );
+  }, [plan0, plan1, plan2, plan3]);
 
   const stakes = (user.stakes ?? []) as Stake[];
 
@@ -110,7 +156,7 @@ export default function StakingSection() {
     return { active, matured, claimed };
   }, [sorted]);
 
-  async function claimStake(stake: any) {
+  async function claimStake(stake: (Stake & { originalIndex: number })) {
     if (!address) return;
 
     try {
@@ -177,7 +223,7 @@ export default function StakingSection() {
   return (
     <div className="space-y-5">
       <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-extrabold text-yellow-300">
               My Staking
@@ -205,7 +251,13 @@ export default function StakingSection() {
         const profit = stake.profit ?? 0n;
         const total = amount + profit;
 
-        const plan = getPlanMeta(Number(stake.planId));
+        const planId = Number(stake.planId);
+        const plan = planMap[planId] ?? {
+          name: `Plan ${planId}`,
+          days: 0,
+          roi: "—",
+        };
+
         const matured = Date.now() >= Number(stake.endTime) * 1000;
         const claimed = Boolean(stake.claimed);
         const claimable = matured && !claimed;
@@ -226,7 +278,7 @@ export default function StakingSection() {
 
               <span
                 className={cn(
-                  "text-xs font-semibold px-3 py-1 rounded-full",
+                  "rounded-full px-3 py-1 text-xs font-semibold",
                   claimed
                     ? "bg-white/10 text-white/70"
                     : claimable
@@ -238,11 +290,23 @@ export default function StakingSection() {
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="mt-4 grid grid-cols-2 gap-3">
               <Info label="Stake" value={`${fmtBig(amount)} USDT`} />
-              <Info label="Profit" value={`${fmtBig(profit)} USDT`} color="text-green-400" />
-              <Info label="Return" value={`${fmtBig(total)} USDT`} color="text-blue-400" />
-              <Info label="Time Left" value={claimed ? "Completed" : getTimeLeft(stake.endTime)} color="text-yellow-300" />
+              <Info
+                label="Profit"
+                value={`${fmtBig(profit)} USDT`}
+                color="text-green-400"
+              />
+              <Info
+                label="Return"
+                value={`${fmtBig(total)} USDT`}
+                color="text-blue-400"
+              />
+              <Info
+                label="Time Left"
+                value={claimed ? "Completed" : getTimeLeft(stake.endTime)}
+                color="text-yellow-300"
+              />
             </div>
 
             <button
@@ -255,7 +319,13 @@ export default function StakingSection() {
                   : "bg-green-500 text-black"
               )}
             >
-              {claimed ? "Claimed" : isLoading ? "Processing..." : claimable ? "Claim Stake" : "Locked"}
+              {claimed
+                ? "Claimed"
+                : isLoading
+                ? "Processing..."
+                : claimable
+                ? "Claim Stake"
+                : "Locked"}
             </button>
           </div>
         );

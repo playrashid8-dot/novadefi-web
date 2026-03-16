@@ -12,12 +12,12 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { key: "home", label: "Home", icon: <Home size={18} /> },
-  { key: "deposit", label: "Stake", icon: <HandCoins size={18} /> },
-  { key: "staking", label: "Staking", icon: <Lock size={18} /> },
-  { key: "withdraw", label: "Rewards", icon: <WalletCards size={18} /> },
-  { key: "team", label: "Team", icon: <Users size={18} /> },
-  { key: "salary", label: "Salary", icon: <BadgeDollarSign size={18} /> },
+  { key: "home", label: "Home", icon: Home },
+  { key: "deposit", label: "Stake", icon: HandCoins },
+  { key: "staking", label: "Staking", icon: Lock },
+  { key: "withdraw", label: "Rewards", icon: WalletCards },
+  { key: "team", label: "Team", icon: Users },
+  { key: "salary", label: "Salary", icon: BadgeDollarSign },
 ] as const;
 
 export default function BottomNav() {
@@ -25,8 +25,7 @@ export default function BottomNav() {
   const params = useSearchParams();
 
   const activeTab = useMemo(() => {
-    const tab = params.get("tab");
-    return tab || "home";
+    return params.get("tab") || "home";
   }, [params]);
 
   function goTo(tabName: string) {
@@ -39,71 +38,53 @@ export default function BottomNav() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 px-2 pb-2 md:hidden">
-      <div className="rounded-3xl border border-white/10 bg-black/90 shadow-[0_0_30px_rgba(34,197,94,0.08)] backdrop-blur-2xl">
-        <div className="overflow-x-auto scrollbar-none">
-          <div className="flex min-w-max items-center gap-1 px-2 py-2">
-            {NAV_ITEMS.map((item) => (
-              <NavItem
+    <div className="fixed inset-x-0 bottom-0 z-50 px-2 pb-2 md:hidden">
+      <div className="mx-auto max-w-3xl rounded-[28px] border border-white/10 bg-black/85 shadow-[0_0_30px_rgba(34,197,94,0.10)] backdrop-blur-2xl">
+        <div className="grid grid-cols-6 gap-1 p-2">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.key;
+
+            return (
+              <button
                 key={item.key}
-                active={activeTab === item.key}
+                type="button"
                 onClick={() => goTo(item.key)}
-                icon={item.icon}
-                label={item.label}
-              />
-            ))}
-          </div>
+                className={`relative flex flex-col items-center justify-center rounded-2xl px-1 py-2 transition-all duration-200 ${
+                  active
+                    ? "bg-gradient-to-b from-green-500/12 to-cyan-500/8"
+                    : "bg-transparent"
+                }`}
+              >
+                {active && (
+                  <>
+                    <span className="absolute left-1/2 top-0 h-[3px] w-7 -translate-x-1/2 rounded-full bg-green-400 shadow-[0_0_14px_rgba(74,222,128,0.8)]" />
+                    <span className="absolute inset-0 rounded-2xl border border-green-400/15" />
+                  </>
+                )}
+
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all duration-200 ${
+                    active
+                      ? "border-green-400/30 bg-green-500/15 text-green-300 shadow-[0_0_16px_rgba(74,222,128,0.12)]"
+                      : "border-white/10 bg-white/5 text-gray-300"
+                  }`}
+                >
+                  <Icon size={18} strokeWidth={2.2} />
+                </div>
+
+                <span
+                  className={`mt-1.5 text-[10px] font-medium leading-none ${
+                    active ? "text-green-300" : "text-gray-400"
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
-  );
-}
-
-function NavItem({
-  active,
-  onClick,
-  icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative flex min-w-[72px] shrink-0 flex-col items-center justify-center rounded-2xl px-2 py-2.5 transition-all duration-200 ${
-        active
-          ? "bg-white/8 text-green-300"
-          : "text-gray-400 hover:bg-white/5 hover:text-white"
-      }`}
-    >
-      {active && (
-        <>
-          <span className="absolute left-1/2 top-0 h-[2px] w-8 -translate-x-1/2 rounded-full bg-green-400" />
-          <span className="absolute inset-0 rounded-2xl shadow-[0_0_18px_rgba(34,197,94,0.12)]" />
-        </>
-      )}
-
-      <div
-        className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all ${
-          active
-            ? "border-green-400/30 bg-green-500/15 text-green-300"
-            : "border-white/10 bg-white/5 text-gray-300"
-        }`}
-      >
-        {icon}
-      </div>
-
-      <span
-        className={`mt-1 text-[11px] font-medium leading-none ${
-          active ? "text-green-300" : "text-gray-400"
-        }`}
-      >
-        {label}
-      </span>
-    </button>
   );
 }

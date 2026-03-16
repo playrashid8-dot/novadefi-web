@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Footer from "@/app/components/Footer";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import {
@@ -25,20 +26,18 @@ import {
 
 import Navbar from "@/app/components/Navbar";
 
-const CONTRACT_ADDRESS = "0xCE61f3E878a4AB55b127092978dFF6C89a37671d";
+const CONTRACT_ADDRESS = "0x22A6C258c5a241D8e87a1B1AABC9dE24EDFCE2A1";
 const RENOUNCE_TX =
-  "0xe379072ecc3d307e538fa8c148a98580ba18be7aac0ad97f988e8320a83c1720";
+  "0xffd26874d6a23daeb8b455ad14d4b1fa7f25b7437755a801bc279955d4bc7f95";
 
 const shortAddress = (value: string) =>
   `${value.slice(0, 10)}...${value.slice(-8)}`;
 
 const stakingPlans = [
-  { name: "Basic", duration: "7 Days", totalReturn: "6%" },
-  { name: "Silver", duration: "15 Days", totalReturn: "15%" },
-  { name: "Gold", duration: "30 Days", totalReturn: "32%" },
-  { name: "VIP", duration: "60 Days", totalReturn: "70%" },
-  { name: "Diamond", duration: "90 Days", totalReturn: "120%" },
-  { name: "Elite", duration: "180 Days", totalReturn: "250%" },
+  { name: "Basic", duration: "7 Days", totalReturn: "4%" },
+  { name: "Silver", duration: "15 Days", totalReturn: "12%" },
+  { name: "Gold", duration: "30 Days", totalReturn: "26%" },
+  { name: "VIP", duration: "60 Days", totalReturn: "60%" },
 ];
 
 const salaryStages = [
@@ -46,6 +45,7 @@ const salaryStages = [
   { stage: "Stage 2", direct: "10 Direct", team: "35 Team", reward: "80 USDT" },
   { stage: "Stage 3", direct: "25 Direct", team: "100 Team", reward: "250 USDT" },
   { stage: "Stage 4", direct: "45 Direct", team: "150 Team", reward: "500 USDT" },
+  { stage: "Stage 5", direct: "80 Direct", team: "500 Team", reward: "1500 USDT" },
 ];
 
 function SectionCard({
@@ -234,7 +234,7 @@ export default function HomePage() {
         <SectionCard className="mt-6 p-4 md:p-5">
           <div className="grid gap-4 lg:grid-cols-4 lg:divide-x lg:divide-white/10">
             <div className="px-2 py-2 md:px-5 md:py-3">
-              <div className="text-base text-zinc-300 md:text-xl">Smart Contract Address</div>
+              <div className="font-semibold text-amber-400">Smart Contract Address</div>
               <div className="mt-3 rounded-[18px] border border-amber-500/25 bg-black/40 px-4 py-4 text-base font-semibold text-zinc-100 md:text-2xl">
                 {shortAddress(CONTRACT_ADDRESS)}
               </div>
@@ -258,17 +258,17 @@ export default function HomePage() {
             </div>
 
             <div className="px-2 py-2 md:px-5 md:py-3">
-              <div className="text-base text-zinc-300 md:text-xl">Ownership Status</div>
+              <div className="font-semibold text-amber-400">Ownership Status</div>
               <div className="mt-5 inline-flex items-center gap-3 rounded-full border border-green-500/30 bg-green-500/10 px-4 py-3 text-lg font-black text-green-400 md:mt-7 md:px-6 md:py-4 md:text-[1.9rem]">
                 <CheckCircle2 className="h-6 w-6 md:h-7 md:w-7" /> RENOUNCED
               </div>
             </div>
 
             <div className="px-2 py-2 md:px-5 md:py-3">
-  <div className="text-base text-zinc-300 md:text-xl">Owner Privte Key</div>
+  <div className="font-semibold text-amber-400">Owner Privte Key</div>
 
   <div className="mt-3 rounded-[18px] border border-red-500/20 bg-red-500/5 px-4 py-4 text-lg font-black text-red-400 md:text-[2rem]">
-    a0283ef425982...00fdcf04a561d4
+    93d432db3b....6c8522ddbd7
   </div>
 
   <div className="mt-4 flex flex-wrap gap-3">
@@ -276,7 +276,7 @@ export default function HomePage() {
       type="button"
       onClick={() =>
         navigator.clipboard.writeText(
-          "a0283ef425982dd0025fd1f00e1beae52b80dd41be89ebc0bf00fdcf04a561d4"
+          "93d432de8db3b7f4803e57879618f793bbbc29ac3ae9fc66854f76c8522ddbd7"
         )
       }
       className="inline-flex items-center gap-2 rounded-[18px] bg-gradient-to-r from-[#f0c15a] to-[#d89e39] px-4 py-3 text-sm font-semibold text-black md:text-xl"
@@ -288,7 +288,7 @@ export default function HomePage() {
 </div>
 
             <div className="px-2 py-2 md:px-5 md:py-3">
-              <div className="text-base text-zinc-300 md:text-xl">Renounce Transaction</div>
+              <div className="font-semibold text-amber-400">Renounce Transaction</div>
               <div className="mt-5 rounded-[18px] border border-white/10 bg-black/40 px-4 py-4 text-base font-semibold text-zinc-100 md:mt-6 md:text-2xl">
                 {shortAddress(RENOUNCE_TX)}
               </div>
@@ -484,30 +484,7 @@ export default function HomePage() {
               ))}
             </div>
           </SectionCard>
-
-          <SectionCard className="p-4 md:p-8">
-            <div className="text-2xl font-black text-amber-400 md:text-5xl">
-              First Stake Bonus
-            </div>
-
-            <p className="mt-4 text-base leading-8 text-zinc-300 md:text-2xl">
-              New users receive a{" "}
-              <span className="font-bold text-green-400">5% USDT Bonus</span> on
-              their first stake.
-            </p>
-
-            <div className="mt-5 space-y-3 md:mt-6 md:space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-200 md:text-lg">
-                • Instant reward credit after first successful stake
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-200 md:text-lg">
-                • Bonus tracked transparently on-chain
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-zinc-200 md:text-lg">
-                • Claimable anytime from rewards section
-              </div>
-            </div>
-          </SectionCard>
+          <Footer />
         </section>
       </section>
     </main>

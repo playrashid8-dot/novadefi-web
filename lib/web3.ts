@@ -5,7 +5,7 @@
 ========================================= */
 
 export const NOVADEFI_ADDRESS =
-  "0xCE61f3E878a4AB55b127092978dFF6C89a37671d" as const;
+  "0x22A6C258c5a241D8e87a1B1AABC9dE24EDFCE2A1" as const;
 
 export const USDT_ADDRESS =
   "0x55d398326f99059fF775485246999027B3197955" as const;
@@ -31,17 +31,18 @@ export const NOVADEFI_ABI = [
   {
     anonymous: false,
     inputs: [
-      { indexed: true, internalType: "address", name: "user", type: "address" },
-      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
-    ],
-    name: "FirstStakeBonusCredited",
-    type: "event",
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: "address", name: "previousOwner", type: "address" },
-      { indexed: true, internalType: "address", name: "newOwner", type: "address" },
+      {
+        indexed: true,
+        internalType: "address",
+        name: "previousOwner",
+        type: "address",
+      },
+      {
+        indexed: true,
+        internalType: "address",
+        name: "newOwner",
+        type: "address",
+      },
     ],
     name: "OwnershipTransferred",
     type: "event",
@@ -55,7 +56,12 @@ export const NOVADEFI_ABI = [
       { indexed: false, internalType: "uint256", name: "returnBps", type: "uint256" },
       { indexed: false, internalType: "uint256", name: "minStake", type: "uint256" },
       { indexed: false, internalType: "uint256", name: "maxStake", type: "uint256" },
-      { indexed: false, internalType: "uint256", name: "maxActivePerUser", type: "uint256" },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "maxActivePerUser",
+        type: "uint256",
+      },
       { indexed: false, internalType: "bool", name: "enabled", type: "bool" },
     ],
     name: "PlanSet",
@@ -95,7 +101,18 @@ export const NOVADEFI_ABI = [
       { indexed: true, internalType: "uint256", name: "stageId", type: "uint256" },
       { indexed: false, internalType: "uint256", name: "requiredDirect", type: "uint256" },
       { indexed: false, internalType: "uint256", name: "requiredTeam", type: "uint256" },
-      { indexed: false, internalType: "uint256", name: "requiredTeamVolume", type: "uint256" },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "requiredTeamVolume",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "requiredActiveStake",
+        type: "uint256",
+      },
       { indexed: false, internalType: "uint256", name: "reward", type: "uint256" },
     ],
     name: "SalaryStageSet",
@@ -171,11 +188,22 @@ export const NOVADEFI_ABI = [
     outputs: [{ internalType: "bool", name: "", type: "bool" }],
   },
   {
-    name: "firstStakeBonusBps",
+    name: "getNextSalaryRequirement",
     type: "function",
     stateMutability: "view",
-    inputs: [],
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    inputs: [{ internalType: "address", name: "user", type: "address" }],
+    outputs: [
+      { internalType: "uint256", name: "nextStage", type: "uint256" },
+      { internalType: "uint256", name: "requiredDirect", type: "uint256" },
+      { internalType: "uint256", name: "requiredTeam", type: "uint256" },
+      { internalType: "uint256", name: "requiredTeamVolume", type: "uint256" },
+      { internalType: "uint256", name: "requiredActiveStake", type: "uint256" },
+      { internalType: "uint256", name: "reward", type: "uint256" },
+      { internalType: "uint256", name: "currentFreshDirect", type: "uint256" },
+      { internalType: "uint256", name: "currentFreshTeam", type: "uint256" },
+      { internalType: "uint256", name: "currentFreshVolume", type: "uint256" },
+      { internalType: "bool", name: "claimable", type: "bool" },
+    ],
   },
   {
     name: "getRewardBalance",
@@ -190,6 +218,19 @@ export const NOVADEFI_ABI = [
     stateMutability: "view",
     inputs: [{ internalType: "address", name: "user", type: "address" }],
     outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+  },
+  {
+    name: "getTeamLevels",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ internalType: "address", name: "user", type: "address" }],
+    outputs: [
+      { internalType: "uint256", name: "level1", type: "uint256" },
+      { internalType: "uint256", name: "level2", type: "uint256" },
+      { internalType: "uint256", name: "level3", type: "uint256" },
+      { internalType: "uint256", name: "level4", type: "uint256" },
+      { internalType: "uint256", name: "level5", type: "uint256" },
+    ],
   },
   {
     name: "getUserStakes",
@@ -263,6 +304,7 @@ export const NOVADEFI_ABI = [
       { internalType: "uint256", name: "requiredDirect", type: "uint256" },
       { internalType: "uint256", name: "requiredTeam", type: "uint256" },
       { internalType: "uint256", name: "requiredTeamVolume", type: "uint256" },
+      { internalType: "uint256", name: "requiredActiveStake", type: "uint256" },
       { internalType: "uint256", name: "reward", type: "uint256" },
     ],
   },
@@ -429,6 +471,4 @@ export const PLAN_IDS = {
   SILVER: 1,
   GOLD: 2,
   VIP: 3,
-  DIAMOND: 4,
-  ELITE: 5,
 } as const;

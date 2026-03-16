@@ -28,6 +28,7 @@ type SalaryStageRow = {
   direct: number;
   team: number;
   volume: number;
+  activeStake: number;
   reward: number;
 };
 
@@ -73,28 +74,77 @@ export default function SalaryPanel() {
     query: { enabled: true, refetchInterval: 10_000 },
   });
 
+  const { data: stage5 } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "salaryStages",
+    args: [5n],
+    query: { enabled: true, refetchInterval: 10_000 },
+  });
+
+  const { data: nextSalaryRaw } = useReadContract({
+    address: NOVADEFI_ADDRESS,
+    abi: NOVADEFI_ABI,
+    functionName: "getNextSalaryRequirement",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address),
+      refetchInterval: 10_000,
+    },
+  });
+
   const stages = useMemo<SalaryStageRow[]>(() => {
-    const raws = [stage1, stage2, stage3, stage4];
+    const raws = [stage1, stage2, stage3, stage4, stage5];
 
     return raws
       .map((raw, i) => {
         if (!raw) return null;
 
-        const s = raw as readonly [bigint, bigint, bigint, bigint];
+        const s = raw as readonly [bigint, bigint, bigint, bigint, bigint];
 
         return {
           stage: i + 1,
           direct: Number(s[0] ?? 0n),
           team: Number(s[1] ?? 0n),
           volume: Number(s[2] ?? 0n) / 1e18,
-          reward: Number(s[3] ?? 0n) / 1e18,
+          activeStake: Number(s[3] ?? 0n) / 1e18,
+          reward: Number(s[4] ?? 0n) / 1e18,
         };
       })
       .filter(Boolean) as SalaryStageRow[];
-  }, [stage1, stage2, stage3, stage4]);
+  }, [stage1, stage2, stage3, stage4, stage5]);
 
   const currentStage = Number(user.salaryStage ?? 0);
-  const nextStage = stages.find((s) => s.stage === currentStage + 1);
+
+  const nextSalary = useMemo(() => {
+    if (!nextSalaryRaw) return null;
+
+    const d = nextSalaryRaw as readonly [
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      bigint,
+      boolean
+    ];
+
+    return {
+      nextStage: Number(d[0] ?? 0n),
+      requiredDirect: Number(d[1] ?? 0n),
+      requiredTeam: Number(d[2] ?? 0n),
+      requiredTeamVolume: Number(d[3] ?? 0n) / 1e18,
+      requiredActiveStake: Number(d[4] ?? 0n) / 1e18,
+      reward: Number(d[5] ?? 0n) / 1e18,
+      currentFreshDirect: Number(d[6] ?? 0n),
+      currentFreshTeam: Number(d[7] ?? 0n),
+      currentFreshVolume: Number(d[8] ?? 0n) / 1e18,
+      claimable: Boolean(d[9]),
+    };
+  }, [nextSalaryRaw]);
 
   async function claimSalary() {
     if (!address || loading || !user.canClaimSalary) return;
@@ -121,7 +171,7 @@ export default function SalaryPanel() {
         type: "salary",
         title: "Salary Claimed",
         subtitle: new Date().toLocaleString(),
-        amount: `Stage ${currentStage + 1}`,
+        amount: `Stage ${nextSalary?.nextStage || currentStage + 1}`,
         amountClass: "text-pink-300",
         badge: "Salary",
         badgeClass: "bg-pink-500/15 text-pink-200",
@@ -158,45 +208,50 @@ export default function SalaryPanel() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
       <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-        <h2 className="text-xl font-extrabold text-pink-300">
+        <h2 className="text-2xl font-extrabold text-yellow-300">
           Salary Rewards
         </h2>
 
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <MiniBox title="Direct" value={String(user.directCount)} />
-          <MiniBox title="Team" value={String(user.teamCount)} />
-          <MiniBox title="Volume" value={`${fmt(user.teamVolume)} USDT`} />
-          <MiniBox title="Active Stake" value={`${fmt(user.activeStake)} USDT`} />
+          <MiniBox title="Direct" value={String(user.directCount ?? 0)} />
+          <MiniBox title="Team" value={String(user.teamCount ?? 0)} />
+          <MiniBox title="Volume" value={`${fmt(Number(user.teamVolume ?? 0))} USDT`} />
+          <MiniBox title="Active Stake" value={`${fmt(Number(user.activeStake ?? 0))} USDT`} />
         </div>
       </div>
 
-      {nextStage ? (
+      {nextSalary && nextSalary.nextStage > 0 ? (
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-white/60">Next Stage</div>
               <div className="text-lg font-bold text-white">
-                Stage {nextStage.stage}
+                Stage {nextSalary.nextStage}
               </div>
             </div>
 
             <div className="text-right">
               <div className="text-sm text-white/60">Reward</div>
               <div className="text-lg font-bold text-green-300">
-                {fmt(nextStage.reward)} USDT
+                {fmt(nextSalary.reward)} USDT
               </div>
             </div>
           </div>
 
           <div className="mt-4 space-y-2 text-sm text-white/70">
             <div>
-              Direct: {user.directCount} / {nextStage.direct}
+              Fresh Direct: {nextSalary.currentFreshDirect} / {nextSalary.requiredDirect}
             </div>
             <div>
-              Team: {user.teamCount} / {nextStage.team}
+              Fresh Team: {nextSalary.currentFreshTeam} / {nextSalary.requiredTeam}
             </div>
             <div>
-              Volume: {fmt(user.teamVolume)} / {fmt(nextStage.volume)} USDT
+              Fresh Volume: {fmt(nextSalary.currentFreshVolume)} /{" "}
+              {fmt(nextSalary.requiredTeamVolume)} USDT
+            </div>
+            <div>
+              Active Stake: {fmt(Number(user.activeStake ?? 0))} /{" "}
+              {fmt(nextSalary.requiredActiveStake)} USDT
             </div>
           </div>
 
@@ -225,9 +280,61 @@ export default function SalaryPanel() {
         </div>
       )}
 
+      {stages.length > 0 && (
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+          <div className="text-lg font-bold text-white">All Salary Stages</div>
+
+          <div className="mt-4 space-y-3">
+            {stages.map((s) => {
+              const claimed = currentStage >= s.stage;
+              const isNext = nextSalary?.nextStage === s.stage;
+
+              return (
+                <div
+                  key={s.stage}
+                  className={cn(
+                    "rounded-2xl border p-4",
+                    claimed
+                      ? "border-green-500/20 bg-green-500/5"
+                      : isNext
+                      ? "border-yellow-400/20 bg-yellow-400/5"
+                      : "border-white/10 bg-black/20"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-white">Stage {s.stage}</div>
+                    <div
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-bold",
+                        claimed
+                          ? "bg-green-500/15 text-green-300"
+                          : isNext
+                          ? "bg-yellow-500/15 text-yellow-300"
+                          : "bg-white/10 text-white/60"
+                      )}
+                    >
+                      {claimed ? "Claimed" : isNext ? "Current Target" : "Locked"}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-white/70">
+                    <div>Direct: {s.direct}</div>
+                    <div>Team: {s.team}</div>
+                    <div>Volume: {fmt(s.volume)} USDT</div>
+                    <div>Active Stake: {fmt(s.activeStake)} USDT</div>
+                    <div className="col-span-2">Reward: {fmt(s.reward)} USDT</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-xs text-white/45">
-        <div>• Salary unlock depends on team growth.</div>
-        <div className="mt-1">• Salary reward goes to reward balance.</div>
+        <div>• Salary uses fresh qualification after each claimed stage.</div>
+        <div className="mt-1">• Fresh Team means non-direct team growth only.</div>
+        <div className="mt-1">• Salary reward goes to reward balance first.</div>
       </div>
     </div>
   );

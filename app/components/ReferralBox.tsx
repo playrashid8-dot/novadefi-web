@@ -44,11 +44,11 @@ export default function ReferralBox() {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="text-lg font-bold text-white">
-            Your Referral Link
-          </div>
+          <div className="text-lg font-bold bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent">
+  Your Referral Link
+</div>
           <div className="mt-1 text-xs text-white/45">
-            Invite users and grow your team automatically
+            Invite Users And Grow Your Team
           </div>
         </div>
       </div>
@@ -75,7 +75,7 @@ export default function ReferralBox() {
       </div>
 
       <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs leading-5 text-white/50">
-        Users joining through this link will automatically connect to your referral team.
+        Users Joining Through This Link Will Automatically Connect To Your Referral Team.
       </div>
     </div>
   );
